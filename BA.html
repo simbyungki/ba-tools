@@ -562,6 +562,21 @@
         <div id="gantt-wrap"></div>
       </div>
     </div>
+
+    <!-- ── 팀/담당자 관리 토글 ── -->
+    <div class="sec-toggle-hdr" style="margin-top:16px" onclick="toggleSec('team-mgmt-sec','chevron-team')">
+      <span class="sec-toggle-title">👥 팀/담당자 관리</span>
+      <span class="sec-chevron collapsed" id="chevron-team">▼</span>
+    </div>
+    <div id="team-mgmt-sec" class="sec-body collapsed">
+      <div class="card" style="margin-top:0">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <span style="font-size:13px;color:var(--gray-500)">팀과 담당자를 등록하면 프로젝트 추가/수정 시 선택할 수 있습니다.</span>
+          <button class="btn btn-navy btn-sm" onclick="openAddTeamModal()">+ 팀 추가</button>
+        </div>
+        <div id="team-list-render"><div class="es"><div class="es-icon">👥</div><p>등록된 팀이 없습니다.</p></div></div>
+      </div>
+    </div>
   </div>
 
   <!-- 상세 -->
@@ -626,12 +641,16 @@
       </div>
       <div class="fr c2" style="margin-bottom:12px">
         <div class="fg">
-          <label>담당자</label>
-          <input type="text" id="edit-owner" placeholder="예) 김BA">
+          <label>담당 팀</label>
+          <select id="edit-dept" onchange="onTeamSelect('edit-dept','edit-owner')">
+            <option value="">-- 팀 선택 --</option>
+          </select>
         </div>
         <div class="fg">
-          <label>담당 부서</label>
-          <input type="text" id="edit-dept" placeholder="예) 온라인개발팀">
+          <label>담당자</label>
+          <select id="edit-owner">
+            <option value="">-- 담당자 선택 --</option>
+          </select>
         </div>
       </div>
       <div class="fg" style="margin-bottom:12px">
@@ -870,14 +889,40 @@
   </div>
 </div>
 
+<!-- MODAL: ADD TEAM -->
+<div class="mo" id="addTeamModal">
+  <div class="mbox">
+    <h2>👥 팀 추가</h2>
+    <p class="mdesc">팀명을 입력하세요. 팀 추가 후 담당자를 등록할 수 있습니다.</p>
+    <div class="fg" style="margin-bottom:18px">
+      <label>팀명</label>
+      <input type="text" id="new-team-name" placeholder="예) 온라인개발팀">
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-navy" onclick="addTeam()">추가</button>
+      <button class="btn btn-outline" onclick="closeAddTeamModal()">취소</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: ADD PROJECT -->
 <div class="mo" id="addPjModal">
   <div class="mbox">
     <h2>📁 프로젝트 추가</h2>
     <div class="fg" style="margin-bottom:12px"><label>프로젝트명</label><input type="text" id="np-name" placeholder="예) 전자결재 내재화"></div>
     <div class="fr c2" style="margin-bottom:12px">
-      <div class="fg"><label>담당자</label><input type="text" id="np-owner" placeholder="예) 김BA"></div>
-      <div class="fg"><label>담당 부서</label><input type="text" id="np-dept" placeholder="예) 온라인개발팀"></div>
+      <div class="fg">
+        <label>담당 팀</label>
+        <select id="np-dept" onchange="onTeamSelect('np-dept','np-owner')">
+          <option value="">-- 팀 선택 --</option>
+        </select>
+      </div>
+      <div class="fg">
+        <label>담당자</label>
+        <select id="np-owner">
+          <option value="">-- 담당자 선택 --</option>
+        </select>
+      </div>
     </div>
     <div class="fg" style="margin-bottom:12px">
       <label>요청 부서</label><input type="text" id="np-req-dept" placeholder="예) 영업관리팀, 경영지원팀">
@@ -921,6 +966,7 @@ function toast(msg, isError) {
 // ── STATE ──────────────────────────────────────────────
 let CK = '', OK = '';
 let projects = [];
+let teams = [];   // [{ id, name, members: ['홍길동', ...] }]
 let curPjId = null;
 const SC = { '정상':'bg-green','주의':'bg-yellow','지연':'bg-red','완료':'bg-blue' };
 
@@ -1165,6 +1211,8 @@ function getWeekdayKo(dateStr) {
 
 function openAddPj() {
   document.getElementById('np-start').value = new Date().toISOString().split('T')[0];
+  populateTeamDropdown('np-dept', '');
+  populateMemberDropdown('np-owner', '', '');
   document.getElementById('addPjModal').classList.add('open');
 }
 function closeAddPj() { document.getElementById('addPjModal').classList.remove('open'); }
@@ -1183,7 +1231,9 @@ function addPj() {
     createdAt: new Date().toISOString()
   });
   closeAddPj();
-  ['np-name','np-owner','np-dept','np-req-dept','np-start','np-end','np-desc'].forEach(id => document.getElementById(id).value = '');
+  ['np-name','np-req-dept','np-start','np-end','np-desc'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('np-dept').value = '';
+  document.getElementById('np-owner').innerHTML = '<option value="">-- 담당자 선택 --</option>';
   saveToLocal();
   renderPjList();
 }
@@ -1673,9 +1723,9 @@ function openDetail(id) {
 
   // 편집 필드 초기값 세팅
   document.getElementById('edit-name').value      = p.name     || '';
-  document.getElementById('edit-owner').value     = p.owner    || '';
-  document.getElementById('edit-dept').value      = p.dept     || '';
   document.getElementById('edit-req-dept').value  = p.reqDept  || '';
+  populateTeamDropdown('edit-dept', p.dept || '');
+  populateMemberDropdown('edit-owner', p.dept || '', p.owner || '');
   document.getElementById('edit-start').value     = p.start    || '';
   document.getElementById('edit-end').value       = p.end      || '';
   document.getElementById('edit-desc').value      = p.desc     || '';
@@ -1983,6 +2033,112 @@ function renderEndHistory(p) {
       </div>`).join('')}`;
 }
 
+// ── 팀/담당자 관리 ──────────────────────────────────────
+
+function saveTeams() {
+  db.collection('ap_data').doc('teams')
+    .set({ teams })
+    .catch(e => console.error('팀 저장 오류:', e));
+}
+
+function loadTeams() {
+  db.collection('ap_data').doc('teams').onSnapshot(doc => {
+    teams = doc.exists ? (doc.data().teams || []) : [];
+    renderTeamList();
+  }, err => console.error('팀 로드 오류:', err));
+}
+
+function renderTeamList() {
+  const el = document.getElementById('team-list-render');
+  if (!el) return;
+  if (!teams.length) {
+    el.innerHTML = '<div class="es"><div class="es-icon">👥</div><p>등록된 팀이 없습니다.</p></div>';
+    return;
+  }
+  el.innerHTML = teams.map(t => `
+    <div style="border:1.5px solid var(--gray-200);border-radius:var(--r);padding:14px 16px;margin-bottom:10px;background:var(--gray-50)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <span style="font-size:14px;font-weight:700;color:var(--navy)">${t.name}</span>
+        <button class="btn btn-danger btn-sm" onclick="deleteTeam('${t.id}')">팀 삭제</button>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">
+        ${(t.members||[]).map(m => `
+          <span style="display:inline-flex;align-items:center;gap:4px;background:#fff;border:1.5px solid var(--gray-200);border-radius:20px;padding:3px 10px;font-size:12px;font-weight:500">
+            ${m}
+            <span onclick="deleteMember('${t.id}','${m}')" style="cursor:pointer;color:var(--gray-400);font-size:14px;line-height:1;margin-left:2px">&times;</span>
+          </span>`).join('')}
+        ${!(t.members||[]).length ? '<span style="font-size:12px;color:var(--gray-400)">담당자 없음</span>' : ''}
+      </div>
+      <div style="display:flex;gap:6px">
+        <input type="text" id="new-member-${t.id}" placeholder="담당자 이름" style="flex:1;padding:7px 10px;font-size:12px;border:1.5px solid var(--gray-200);border-radius:var(--r)" onkeydown="if(event.key==='Enter')addMember('${t.id}')">
+        <button class="btn btn-accent btn-sm" onclick="addMember('${t.id}')">+ 추가</button>
+      </div>
+    </div>`).join('');
+}
+
+function openAddTeamModal() { document.getElementById('new-team-name').value=''; document.getElementById('addTeamModal').classList.add('open'); }
+function closeAddTeamModal() { document.getElementById('addTeamModal').classList.remove('open'); }
+
+function addTeam() {
+  const name = document.getElementById('new-team-name').value.trim();
+  if (!name) { toast('팀명을 입력하세요.', true); return; }
+  if (teams.some(t => t.name === name)) { toast('이미 존재하는 팀명입니다.', true); return; }
+  teams.push({ id: Date.now().toString(), name, members: [] });
+  saveTeams();
+  closeAddTeamModal();
+  toast('✓ 팀이 추가되었습니다.');
+}
+
+function deleteTeam(teamId) {
+  if (!confirm('팀을 삭제하면 담당자 목록도 함께 삭제됩니다. 계속할까요?')) return;
+  teams = teams.filter(t => t.id !== teamId);
+  saveTeams();
+}
+
+function addMember(teamId) {
+  const inp = document.getElementById('new-member-' + teamId);
+  const name = inp.value.trim();
+  if (!name) { toast('담당자 이름을 입력하세요.', true); return; }
+  const t = teams.find(x => x.id === teamId);
+  if (!t) return;
+  if ((t.members||[]).includes(name)) { toast('이미 등록된 담당자입니다.', true); return; }
+  t.members = [...(t.members||[]), name];
+  saveTeams();
+  toast('✓ 담당자가 추가되었습니다.');
+}
+
+function deleteMember(teamId, memberName) {
+  const t = teams.find(x => x.id === teamId);
+  if (!t) return;
+  t.members = (t.members||[]).filter(m => m !== memberName);
+  saveTeams();
+}
+
+// 드롭다운 채우기
+function populateTeamDropdown(deptSelId, currentDept) {
+  const sel = document.getElementById(deptSelId);
+  if (!sel) return;
+  const prev = currentDept || sel.value;
+  sel.innerHTML = '<option value="">-- 팀 선택 --</option>' +
+    teams.map(t => `<option value="${t.name}" ${t.name===prev?'selected':''}>${t.name}</option>`).join('');
+}
+
+function populateMemberDropdown(ownerSelId, teamName, currentOwner) {
+  const sel = document.getElementById(ownerSelId);
+  if (!sel) return;
+  const t = teams.find(x => x.name === teamName);
+  const members = t ? (t.members||[]) : [];
+  sel.innerHTML = '<option value="">-- 담당자 선택 --</option>' +
+    members.map(m => `<option value="${m}" ${m===currentOwner?'selected':''}>${m}</option>`).join('');
+  // 현재 선택값 유지 또는 초기화
+  if (currentOwner && members.includes(currentOwner)) sel.value = currentOwner;
+}
+
+function onTeamSelect(deptSelId, ownerSelId) {
+  const teamName = document.getElementById(deptSelId).value;
+  populateMemberDropdown(ownerSelId, teamName, '');
+}
+
 // ── 프로젝트 저장/로드 (Firestore) ──────────────────────
 const LS_KEY = 'ap_projects_v3'; // 레거시 키 (미사용)
 
@@ -2072,6 +2228,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Firestore 실시간 리스너 시작 (데이터 자동 로드 + 실시간 동기화)
   loadFromLocal();
   loadFromLocalHD();
+  loadTeams();
 
   // UI 설정 복원 (localStorage 유지)
   loadSortPref();
